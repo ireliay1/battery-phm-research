@@ -1,0 +1,22 @@
+model:
+    # Same XGBoost regressor as the author's SOH baseline.
+    name: 'XGBoostRULPredictor'
+train_test_split:
+    name: 'MATRPrimaryTestTrainTestSplitter'
+    cell_data_path: 'data/processed/MATR'
+feature:
+    name: 'VoltageCapacityMatrixFeatureExtractor'
+    diff_base: 8
+    diff_mode: 'previous'
+    min_cycle_index: 0
+    max_cycle_index: 98
+    cycles_to_keep: 98
+    use_precalculated_qdlin: True
+label:
+    name: 'SOHLabelAnnotator'
+    cycle_index: 99
+    mode: 'relative'
+feature_transformation:
+    name: 'ZScoreDataTransformation'
+label_transformation:
+    name: 'ZScoreDataTransformation'

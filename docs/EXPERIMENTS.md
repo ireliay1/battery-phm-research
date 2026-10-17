@@ -4,7 +4,7 @@
 
 每条实验记录包含：目的、配置、命令、数据划分、随机种子、结果文件、结论和限制。历史结果保留在 `workspace/`，不得覆盖。
 
-当前项目没有 Git 历史，因此“代码版本”以配置文件、工作区时间戳和当前源文件为准。
+项目已建立本地 Git 历史并同步到 GitHub；本次初始基线提交为 `7d02587`。实验结果以配置文件、工作区结果文件和提交记录共同追溯。
 
 ## 2. 已验证实验总表
 
@@ -27,6 +27,8 @@
 |---|---|---:|---:|---:|---|
 | `soh_xgb_author_baseline` | 作者单循环设置，第98循环，XGBoost | 0.009663 | 0.007932 | 0.81195% | 已验证 |
 | `soh_xgb_rolling_pca50` | 50窗口、累计+相邻特征、PCA50、XGBoost | 0.012373 | 0.010066 | 1.08677% | 已验证，全窗口宏平均 |
+| `soh_xgb_ablation_previous` | 第98循环、相邻差分、XGBoost | 0.009987 | 0.007706 | 0.78956% | 已验证 |
+| `soh_xgb_ablation_both` | 第98循环、累计+相邻差分、XGBoost | 0.009345 | 0.007604 | 0.77871% | 已验证，当前最佳单点方案 |
 
 为公平对齐第98循环，滚动方案在第98循环的结果为：
 
@@ -138,3 +140,30 @@ RUL 的 `94.8531` 是电芯级宏平均，不能直接与作者单点基线的 `
 - 第98循环对齐结果：RMSE 0.0103110，MAE 0.0076471，MAPE 0.78284%。
 - 对比：第98循环对齐后 RMSE 比基线差约6.70%，MAE/MAPE 好约3.34%。
 - 结论：当前不能声称整体提升；需要进一步定位离群电芯和做消融实验。
+
+### E-SOH-003：固定循环 SOH 特征消融
+
+- 时间：2026-10-18。
+- 目的/假设：在相同数据划分、同一 XGBoost 模型和第98循环预测设置下，比较固定参考差分、相邻差分及组合差分的贡献。
+- 公共设置：MATR，`MATRPrimaryTestTrainTestSplitter`，41 个训练电芯/42 个测试电芯，`seed=0`，SOH 相对容量标签，特征标准化；与作者基线保持单点输入口径。
+- 相邻差分配置：`configs/baselines/sklearn/xgb/matr_1_soh_previous.yaml`。
+- 相邻差分输出：`workspace/soh_xgb_ablation_previous/predictions_seed_0_20261018022247.pkl`。
+- 组合差分配置：`configs/baselines/sklearn/xgb/matr_1_soh_both.yaml`。
+- 组合差分输出：`workspace/soh_xgb_ablation_both/predictions_seed_0_20261018022340.pkl`。
+- 实际命令：
+
+```bat
+batteryml run configs\baselines\sklearn\xgb\matr_1_soh_previous.yaml --workspace .\workspace\soh_xgb_ablation_previous --train --eval
+batteryml run configs\baselines\sklearn\xgb\matr_1_soh_both.yaml --workspace .\workspace\soh_xgb_ablation_both --train --eval
+```
+
+- 结果：
+
+| 特征 | RMSE | MAE | MAPE |
+|---|---:|---:|---:|
+| 作者固定参考差分基线 | 0.009663 | 0.007932 | 0.81195% |
+| 相邻差分 | 0.009987 | 0.007706 | 0.78956% |
+| 固定参考差分 + 相邻差分 | 0.009345 | 0.007604 | 0.77871% |
+
+- 结论：在本次单随机种子、单循环和当前划分下，组合差分相对作者基线 RMSE 下降约3.3%，MAE 下降约4.1%，MAPE 下降约4.1%，是当前 SOH 单点方案的最佳结果。相邻差分单独使用时 RMSE 略差，但 MAE/MAPE 略好，说明近期变化信息有价值，组合后效果更稳定。
+- 限制：这是单个随机种子和单一观测循环的结果，尚未证明跨随机种子或不同观测循环仍然成立；PCA/不使用 PCA 的消融尚未完成。
