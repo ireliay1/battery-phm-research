@@ -1,0 +1,32 @@
+model:
+    name: 'XGBoostRULPredictor'
+train_test_split:
+    name: 'MATRPrimaryTestTrainTestSplitter'
+    cell_data_path: 'data/processed/MATR'
+feature:
+    name: 'VoltageCapacityMatrixFeatureExtractor'
+    diff_base: 8
+    diff_mode: 'both'
+    min_cycle_index: 8
+    max_cycle_index: 10000
+    cycles_to_keep: null
+    rolling_window: 50
+    min_rul_for_prediction: 300
+    use_precalculated_qdlin: True
+label:
+    name: 'RULLabelAnnotator'
+    eol_soh: 0.8
+    min_rul_limit: 300
+feature_transformation:
+    name: 'SequentialDataTransformation'
+    transformations:
+        - name: 'ZScoreDataTransformation'
+        - name: 'PCADataTransformation'
+          n_components: 50
+          random_state: 0
+          svd_solver: 'randomized'
+label_transformation:
+    name: 'SequentialDataTransformation'
+    transformations:
+        - name: 'LogScaleDataTransformation'
+        - name: 'ZScoreDataTransformation'

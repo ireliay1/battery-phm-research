@@ -1,0 +1,21 @@
+model:
+    # BatteryML author's XGBoost regressor, used as the SOH baseline.
+    name: 'XGBoostRULPredictor'
+train_test_split:
+    name: 'MATRPrimaryTestTrainTestSplitter'
+    cell_data_path: 'data/processed/MATR'
+feature:
+    name: 'VoltageCapacityMatrixFeatureExtractor'
+    diff_base: 8
+    max_cycle_index: 98
+    cycles_to_keep: 98
+    use_precalculated_qdlin: True
+label:
+    name: 'SOHLabelAnnotator'
+    # SOHLabelAnnotator uses 1-based cycle_index; feature cycle 98 is index 99.
+    cycle_index: 99
+    mode: 'relative'
+feature_transformation:
+    name: 'ZScoreDataTransformation'
+label_transformation:
+    name: 'ZScoreDataTransformation'
