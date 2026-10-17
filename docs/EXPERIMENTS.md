@@ -167,3 +167,21 @@ batteryml run configs\baselines\sklearn\xgb\matr_1_soh_both.yaml --workspace .\w
 
 - 结论：在本次单随机种子、单循环和当前划分下，组合差分相对作者基线 RMSE 下降约3.3%，MAE 下降约4.1%，MAPE 下降约4.1%，是当前 SOH 单点方案的最佳结果。相邻差分单独使用时 RMSE 略差，但 MAE/MAPE 略好，说明近期变化信息有价值，组合后效果更稳定。
 - 限制：这是单个随机种子和单一观测循环的结果，尚未证明跨随机种子或不同观测循环仍然成立；PCA/不使用 PCA 的消融尚未完成。
+
+### E-SOH-004：不同观测循环的 SOH 特征验证
+
+- 时间：2026-10-18。
+- 目的/假设：验证 E-SOH-003 中组合差分的提升是否对不同退化阶段稳定有效。
+- 公共设置：MATR，`MATRPrimaryTestTrainTestSplitter`，41 个训练电芯/42 个测试电芯，`seed=0`，参考循环 8，单点 XGBoost，SOH 相对容量标签，特征标准化；仅改变观测循环和差分模式。
+- 配置：第50循环使用 `matr_1_soh_obs50_reference.yaml`、`matr_1_soh_obs50_both.yaml`；第70循环使用 `matr_1_soh_obs70_reference.yaml`、`matr_1_soh_obs70_both.yaml`。
+- 结果文件：分别位于 `workspace/soh_xgb_obs50_reference`、`workspace/soh_xgb_obs50_both`、`workspace/soh_xgb_obs70_reference`、`workspace/soh_xgb_obs70_both`。
+- 结果：
+
+| 观测循环 | 固定参考差分 RMSE | 组合差分 RMSE | 固定参考差分 MAE | 组合差分 MAE |
+|---:|---:|---:|---:|---:|
+| 50 | 0.008193 | 0.008874 | 0.006067 | 0.006690 |
+| 70 | 0.010376 | 0.010372 | 0.008228 | 0.007915 |
+| 98 | 0.009663 | 0.009345 | 0.007932 | 0.007604 |
+
+- 结论：组合差分在第98循环改善，在第70循环几乎持平，在第50循环变差。因此，组合差分的收益具有明显阶段依赖性；当前不能宣称它对所有观测点都有效。第50循环的固定参考差分反而是三组观测点中 RMSE 最低的方案。
+- 后续方向：继续分析不同观测点的特征分布和标签分布；优先考虑按观测阶段选择特征模式，或把观测循环作为模型输入，而不是默认所有阶段使用同一组合特征。

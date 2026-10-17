@@ -1,0 +1,21 @@
+model:
+    name: 'XGBoostRULPredictor'
+train_test_split:
+    name: 'MATRPrimaryTestTrainTestSplitter'
+    cell_data_path: 'data/processed/MATR'
+feature:
+    name: 'VoltageCapacityMatrixFeatureExtractor'
+    diff_base: 8
+    diff_mode: 'reference'
+    min_cycle_index: 0
+    max_cycle_index: 50
+    cycles_to_keep: 50
+    use_precalculated_qdlin: True
+label:
+    name: 'SOHLabelAnnotator'
+    cycle_index: 51
+    mode: 'relative'
+feature_transformation:
+    name: 'ZScoreDataTransformation'
+label_transformation:
+    name: 'ZScoreDataTransformation'
