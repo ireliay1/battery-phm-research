@@ -31,6 +31,7 @@
 | `soh_xgb_ablation_both` | 第98循环、累计+相邻差分、XGBoost | 0.009345 | 0.007604 | 0.77871% | 已验证，当前最佳单点方案 |
 | `soh_xgb_rolling_pca50_avg10` | 50窗口、组合差分、降采样10、PCA50 | 0.012457 | 0.010179 | 1.09897% | 已验证，电芯宏平均 |
 | `soh_xgb_rolling_nopca_avg10` | 50窗口、组合差分、降采样10、不使用PCA | 0.011560 | 0.009395 | 1.01576% | 已验证，电芯宏平均 |
+| `soh_xgb_rolling_agg20` | 50窗口、组合差分、20区间均值+标准差、不使用PCA | 0.010796 | 0.008700 | 0.94038% | 已验证，电芯宏平均 |
 
 为公平对齐第98循环，滚动方案在第98循环的结果为：
 
@@ -223,3 +224,23 @@ batteryml run configs\baselines\sklearn\xgb\matr_1_rolling_soh_nopca.yaml --work
 - 原因：当前 `Task._build_rolling_dataset` 会把所有窗口完整复制并一次性堆叠；完整组合特征维度约为2000，窗口长度为50，导致内存需求过大。
 - 结论：当前实现下不能直接用完整特征做无 PCA 滚动训练。PCA 的一个实际作用是降低窗口特征维度和内存压力，而不仅是提高或降低预测精度。
 - 后续方向：实现懒加载窗口数据集、分块训练/预测或窗口级特征池化后，再重新进行完整特征与 PCA 的严格对比。
+
+### E-SOH-007：统计聚合滚动 SOH 实验
+
+- 时间：2026-10-19。
+- 目的/假设：使用可解释的区间统计量替代 PCA，降低滚动窗口维度，同时保留 Qdlin 曲线的整体形状和局部波动信息。
+- 方法：将每个差分 Qdlin 曲线等分为20个区间，每个区间计算均值和标准差；累计参考差分与相邻差分分别聚合后再拼接。组合特征每个循环约80维，50循环窗口约4000维；不使用 PCA。
+- 实现：`batteryml/feature/voltage_capacity_matrix.py` 的 `aggregation_bins` 参数。
+- 配置：`configs/baselines/sklearn/xgb/matr_1_rolling_soh_agg20.yaml`。
+- 命令：
+
+```bat
+batteryml run configs\baselines\sklearn\xgb\matr_1_rolling_soh_agg20.yaml --workspace .\workspace\soh_xgb_rolling_agg20 --train --eval
+```
+
+- 输出：`workspace/soh_xgb_rolling_agg20/predictions_seed_0_20261019020129.pkl`。
+- 电芯宏平均结果：RMSE `0.010796`，MAE `0.008700`，MAPE `0.94038%`。
+- 窗口级结果：RMSE `0.012513`，MAE `0.008386`，MAPE `0.90500%`。
+- 对比：统计聚合方案优于 `cycle_average=10` 的无 PCA 方案（宏平均 RMSE 0.011560），但两者特征构造不同，不能视为纯降维方法对比；相对原始滚动 PCA50 方案（宏平均 RMSE 0.012373）也更好，但仍未超过固定第98循环单点基线（RMSE 0.009663）。
+- 结论：统计聚合能够在不使用 PCA 的情况下成功运行，并取得有竞争力的滚动 SOH 结果；它是当前更可解释、内存可控的降维候选方案。
+- 限制：仅验证了20区间、均值+标准差、单 seed；区间数量和统计量组合仍需消融。

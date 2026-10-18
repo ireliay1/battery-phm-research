@@ -1,6 +1,7 @@
 # Licensed under the MIT License.
 # Copyright (c) Microsoft Corporation.
 
+import numpy as np
 import torch
 
 from typing import List
@@ -24,7 +25,8 @@ class VoltageCapacityMatrixFeatureExtractor(BaseFeatureExtractor):
                  min_rul_for_prediction: float = 300.0,
                  use_precalculated_qdlin: bool = False,
                  smooth: bool = True,
-                 cycle_average: int = None):
+                 cycle_average: int = None,
+                 aggregation_bins: int = None):
         self.interp_dim = interp_dim
         self.min_cycle_index = min_cycle_index
         self.max_cycle_index = max_cycle_index
@@ -46,6 +48,22 @@ class VoltageCapacityMatrixFeatureExtractor(BaseFeatureExtractor):
 
         # See https://github.com/petermattia/revisit-severson-et-al/blob/main/revisit-severson-et-al.ipynb noqa
         self.cycle_average = cycle_average
+        self.aggregation_bins = aggregation_bins
+        if self.cycle_average is not None and self.aggregation_bins is not None:
+            raise ValueError(
+                'cycle_average and aggregation_bins cannot be used together.')
+        if self.aggregation_bins is not None:
+            assert self.aggregation_bins > 0
+
+    def _aggregate_vector(self, vector):
+        """Summarize a Qdlin curve with equal-width bin mean and std."""
+        if self.aggregation_bins is None:
+            return vector
+
+        chunks = np.array_split(vector, self.aggregation_bins)
+        means = np.asarray([chunk.mean() for chunk in chunks])
+        stds = np.asarray([chunk.std() for chunk in chunks])
+        return np.concatenate([means, stds])
         
     def process_cell(self, cell_data: BatteryData) -> torch.Tensor:
         feature, _ = self.process_cell_with_indices(cell_data)
@@ -99,6 +117,8 @@ class VoltageCapacityMatrixFeatureExtractor(BaseFeatureExtractor):
                 if self.smooth:
                     diff_qdlin = smooth(diff_qdlin)
 
+                diff_qdlin = self._aggregate_vector(diff_qdlin)
+
                 feature_tensor = torch.from_numpy(diff_qdlin)
 
             else:
@@ -116,6 +136,9 @@ class VoltageCapacityMatrixFeatureExtractor(BaseFeatureExtractor):
 
                     if self.smooth:
                         diff_previous_qdlin = smooth(diff_previous_qdlin)
+
+                    diff_previous_qdlin = self._aggregate_vector(
+                        diff_previous_qdlin)
 
                     feature_tensor = torch.from_numpy(diff_previous_qdlin)
                 else:
@@ -137,6 +160,11 @@ class VoltageCapacityMatrixFeatureExtractor(BaseFeatureExtractor):
                     if self.smooth:
                         diff_reference_qdlin = smooth(diff_reference_qdlin)
                         diff_previous_qdlin = smooth(diff_previous_qdlin)
+
+                    diff_reference_qdlin = self._aggregate_vector(
+                        diff_reference_qdlin)
+                    diff_previous_qdlin = self._aggregate_vector(
+                        diff_previous_qdlin)
 
                     feature_tensor = torch.cat([
                         torch.from_numpy(diff_reference_qdlin),
