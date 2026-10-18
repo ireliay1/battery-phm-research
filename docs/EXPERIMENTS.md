@@ -207,3 +207,19 @@ batteryml run configs\baselines\sklearn\xgb\matr_1_soh_both.yaml --workspace .\w
 - 窗口级结果：PCA50 的 RMSE/MAE/MAPE 为 `0.014817/0.009630/1.03990%`；无 PCA 为 `0.013908/0.009143/0.98869%`。
 - 结论：在本次受控设置下，不使用 PCA 的电芯宏平均 RMSE 比 PCA50 低约7.2%，MAE 低约7.7%，MAPE 低约7.6%；窗口级指标也均改善。说明 PCA50 可能压缩掉部分对 SOH 有用的低方差信息。
 - 限制：两组都使用了 `cycle_average=10`，因此不能直接与原始 `soh_xgb_rolling_pca50` 的结果做纯 PCA 因果比较；实验仍为单 seed，稳定性待确认。
+
+### E-SOH-006：完整特征无 PCA 滚动 SOH 尝试（失败）
+
+- 时间：2026-10-19。
+- 目的：测试当前机器是否能够直接运行完整 Qdlin 特征、不降采样、不使用 PCA 的 50 循环滚动 SOH 方案。
+- 配置：`configs/baselines/sklearn/xgb/matr_1_rolling_soh_nopca.yaml`；没有设置 `cycle_average` 和 PCA。
+- 命令：
+
+```bat
+batteryml run configs\baselines\sklearn\xgb\matr_1_rolling_soh_nopca.yaml --workspace .\workspace\soh_xgb_rolling_nopca --train --eval
+```
+
+- 结果：失败，未生成有效预测结果。构建训练滚动窗口时，`torch.stack(features)` 尝试分配约 `20,608,800,000` bytes（约19.2 GiB），触发 `RuntimeError: not enough memory`。
+- 原因：当前 `Task._build_rolling_dataset` 会把所有窗口完整复制并一次性堆叠；完整组合特征维度约为2000，窗口长度为50，导致内存需求过大。
+- 结论：当前实现下不能直接用完整特征做无 PCA 滚动训练。PCA 的一个实际作用是降低窗口特征维度和内存压力，而不仅是提高或降低预测精度。
+- 后续方向：实现懒加载窗口数据集、分块训练/预测或窗口级特征池化后，再重新进行完整特征与 PCA 的严格对比。
