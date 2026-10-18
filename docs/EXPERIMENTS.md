@@ -244,3 +244,21 @@ batteryml run configs\baselines\sklearn\xgb\matr_1_rolling_soh_agg20.yaml --work
 - 对比：统计聚合方案优于 `cycle_average=10` 的无 PCA 方案（宏平均 RMSE 0.011560），但两者特征构造不同，不能视为纯降维方法对比；相对原始滚动 PCA50 方案（宏平均 RMSE 0.012373）也更好，但仍未超过固定第98循环单点基线（RMSE 0.009663）。
 - 结论：统计聚合能够在不使用 PCA 的情况下成功运行，并取得有竞争力的滚动 SOH 结果；它是当前更可解释、内存可控的降维候选方案。
 - 限制：仅验证了20区间、均值+标准差、单 seed；区间数量和统计量组合仍需消融。
+
+### E-SOH-008：统计聚合滚动 SOH 多随机种子验证
+
+- 时间：2026-10-19。
+- 目的：验证 E-SOH-007 的统计聚合结果是否依赖随机种子。
+- 配置：`configs/baselines/sklearn/xgb/matr_1_rolling_soh_agg20.yaml`；工作区 `workspace/soh_xgb_rolling_agg20`。
+- 命令：
+
+```bat
+batteryml run configs\baselines\sklearn\xgb\matr_1_rolling_soh_agg20.yaml --workspace .\workspace\soh_xgb_rolling_agg20 --train --eval --seed 1
+batteryml run configs\baselines\sklearn\xgb\matr_1_rolling_soh_agg20.yaml --workspace .\workspace\soh_xgb_rolling_agg20 --train --eval --seed 2
+batteryml run configs\baselines\sklearn\xgb\matr_1_rolling_soh_agg20.yaml --workspace .\workspace\soh_xgb_rolling_agg20 --train --eval --seed 3
+```
+
+- 结果文件：`predictions_seed_0_20261019020129.pkl`、`predictions_seed_1_20261019020607.pkl`、`predictions_seed_2_20261019020724.pkl`、`predictions_seed_3_20261019020842.pkl`。
+- 四个 seed 的电芯宏平均结果完全一致：RMSE `0.0107956330`，MAE `0.0086998330`，MAPE `0.0094038236`；窗口级结果也完全一致：RMSE `0.0125133330`，MAE `0.0083863940`，MAPE `0.0090500414`。
+- 原因分析：训练入口会设置 Python、NumPy、PyTorch 随机种子，但当前 `XGBoostRULPredictor` 仅调用 `XGBRegressor` 默认参数；配置中没有 `random_state`、`subsample<1` 或 `colsample_bytree<1`，因此当前 XGBoost 训练基本是确定性的。
+- 结论：统计聚合方案在 seed 0–3 下结果稳定，但这不是对随机训练鲁棒性的充分验证，因为当前模型本身没有启用明显随机机制。若要测试真正的随机鲁棒性，需要显式加入 XGBoost 子采样和 `random_state`，并重新建立对照实验。
