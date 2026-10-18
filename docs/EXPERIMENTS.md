@@ -29,6 +29,8 @@
 | `soh_xgb_rolling_pca50` | 50窗口、累计+相邻特征、PCA50、XGBoost | 0.012373 | 0.010066 | 1.08677% | 已验证，全窗口宏平均 |
 | `soh_xgb_ablation_previous` | 第98循环、相邻差分、XGBoost | 0.009987 | 0.007706 | 0.78956% | 已验证 |
 | `soh_xgb_ablation_both` | 第98循环、累计+相邻差分、XGBoost | 0.009345 | 0.007604 | 0.77871% | 已验证，当前最佳单点方案 |
+| `soh_xgb_rolling_pca50_avg10` | 50窗口、组合差分、降采样10、PCA50 | 0.012457 | 0.010179 | 1.09897% | 已验证，电芯宏平均 |
+| `soh_xgb_rolling_nopca_avg10` | 50窗口、组合差分、降采样10、不使用PCA | 0.011560 | 0.009395 | 1.01576% | 已验证，电芯宏平均 |
 
 为公平对齐第98循环，滚动方案在第98循环的结果为：
 
@@ -185,3 +187,23 @@ batteryml run configs\baselines\sklearn\xgb\matr_1_soh_both.yaml --workspace .\w
 
 - 结论：组合差分在第98循环改善，在第70循环几乎持平，在第50循环变差。因此，组合差分的收益具有明显阶段依赖性；当前不能宣称它对所有观测点都有效。第50循环的固定参考差分反而是三组观测点中 RMSE 最低的方案。
 - 后续方向：继续分析不同观测点的特征分布和标签分布；优先考虑按观测阶段选择特征模式，或把观测循环作为模型输入，而不是默认所有阶段使用同一组合特征。
+
+### E-SOH-005：滚动 SOH 的 PCA 与无 PCA 对比
+
+- 时间：2026-10-19。
+- 目的/假设：在相同滚动窗口、组合差分和降采样条件下，验证 PCA50 是否改善滚动 SOH 预测，或是否损失有用的退化信息。
+- 公共设置：MATR，`MATRPrimaryTestTrainTestSplitter`，41 个训练电芯/42 个测试电芯，`seed=0`，组合差分，50 循环窗口，`cycle_average=10`，SOH 相对容量标签，XGBoost；仅改变是否使用 PCA50。
+- PCA 配置：`configs/baselines/sklearn/xgb/matr_1_rolling_soh_pca50_avg10.yaml`。
+- PCA 输出：`workspace/soh_xgb_rolling_pca50_avg10/predictions_seed_0_20261019013949.pkl`。
+- 无 PCA 配置：`configs/baselines/sklearn/xgb/matr_1_rolling_soh_nopca_avg10.yaml`。
+- 无 PCA 输出：`workspace/soh_xgb_rolling_nopca_avg10/predictions_seed_0_20261019014253.pkl`。
+- 电芯宏平均结果：
+
+| 方案 | RMSE | MAE | MAPE |
+|---|---:|---:|---:|
+| PCA50 | 0.012457 | 0.010179 | 1.09897% |
+| 不使用 PCA | 0.011560 | 0.009395 | 1.01576% |
+
+- 窗口级结果：PCA50 的 RMSE/MAE/MAPE 为 `0.014817/0.009630/1.03990%`；无 PCA 为 `0.013908/0.009143/0.98869%`。
+- 结论：在本次受控设置下，不使用 PCA 的电芯宏平均 RMSE 比 PCA50 低约7.2%，MAE 低约7.7%，MAPE 低约7.6%；窗口级指标也均改善。说明 PCA50 可能压缩掉部分对 SOH 有用的低方差信息。
+- 限制：两组都使用了 `cycle_average=10`，因此不能直接与原始 `soh_xgb_rolling_pca50` 的结果做纯 PCA 因果比较；实验仍为单 seed，稳定性待确认。
