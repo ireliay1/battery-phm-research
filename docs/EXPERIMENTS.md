@@ -20,6 +20,7 @@
 | `both_8_98` | 累计差分+相邻差分 | 240.4806 | 140.8790 | 16.60% | 已验证 |
 | `rolling_w50_rul300_pca50_v2` | 50窗口、RUL≥300、PCA50 | 165.2313 | 107.7070 | 14.55% | 已验证，窗口级 |
 | `rolling_w50_rul300_pca50_cell_macro` | 同上，电芯级主指标 | 94.8531 | 73.7155 | 14.63% | 已验证，宏平均 |
+| `rolling_w50_rul300_agg20` | 50窗口、RUL≥300、组合差分、20区间均值+标准差 | 69.5922 | 55.5010 | 10.87% | 已验证，电芯宏平均 |
 
 ### SOH 实验
 
@@ -123,6 +124,25 @@ RUL 的 `94.8531` 是电芯级宏平均，不能直接与作者单点基线的 `
 - 输出：`workspace/rolling_w50_rul300_pca50_cell_macro/predictions_seed_0_20261017223930.pkl`。
 - 结果：电芯宏平均 RMSE 94.8531，MAE 73.7155，MAPE 14.63%；窗口级 RMSE 165.2313，MAE 107.7070，MAPE 14.55%。
 - 结论：电芯宏平均和窗口级指标必须同时报告，二者不是同一评价口径。
+
+### E-RUL-005：统计聚合与 PCA 的滚动 RUL 对比
+
+- 时间：2026-10-19。
+- 目的/假设：将 SOH 中验证过的20区间均值+标准差统计聚合迁移到 RUL，比较其与原 PCA50 滚动方案的效果。
+- 公共设置：MATR，`MATRPrimaryTestTrainTestSplitter`，41 个训练电芯/42 个测试电芯，50循环窗口，组合差分，RUL≥300，`eol_soh=0.8`，XGBoost，`seed=0`；仅改变特征降维方式。
+- PCA 配置/结果：`configs/baselines/sklearn/xgb/matr_1_rolling_w50_rul300_pca50.yaml`，工作区 `workspace/rolling_w50_rul300_pca50_cell_macro`。
+- 统计聚合配置：`configs/baselines/sklearn/xgb/matr_1_rolling_w50_rul300_agg20.yaml`。
+- 统计聚合输出：`workspace/rolling_w50_rul300_agg20/predictions_seed_0_20261019021343.pkl`。
+- 电芯宏平均结果：
+
+| 方案 | RMSE | MAE | MAPE |
+|---|---:|---:|---:|
+| PCA50 | 94.8531 | 73.7155 | 14.63% |
+| 统计聚合20 | 69.5922 | 55.5010 | 10.87% |
+
+- 窗口级结果：PCA50 为 `165.2313/107.7070/14.55%`；统计聚合20 为 `130.9172/86.5913/12.17%`。
+- 结论：在本次相同 RUL 任务设置下，统计聚合20 的电芯宏平均 RMSE 比 PCA50 低约26.6%，MAE 低约24.7%，MAPE 低约25.7%；窗口级 RMSE 低约20.8%。统计聚合在 RUL 上也表现出优于 PCA50 的结果，同时内存可控、特征含义更容易解释。
+- 限制：当前只验证了 `seed=0` 和20区间均值+标准差，尚未进行 RUL 多 seed 验证；不同降维方法的结果仍需在多个 seed 下确认。
 
 ### E-SOH-001：作者方法 SOH 基线
 
