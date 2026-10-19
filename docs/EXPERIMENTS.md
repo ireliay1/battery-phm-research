@@ -21,6 +21,7 @@
 | `rolling_w50_rul300_pca50_v2` | 50窗口、RUL≥300、PCA50 | 165.2313 | 107.7070 | 14.55% | 已验证，窗口级 |
 | `rolling_w50_rul300_pca50_cell_macro` | 同上，电芯级主指标 | 94.8531 | 73.7155 | 14.63% | 已验证，宏平均 |
 | `rolling_w50_rul300_agg20` | 50窗口、RUL≥300、组合差分、20区间均值+标准差 | 69.5922 | 55.5010 | 10.87% | 已验证，电芯宏平均 |
+| `rolling_w50_rul300_agg20_vgradient` | 在统计聚合基础上加入电压方向 dQ/dV | 75.0781 | 58.9972 | 11.34% | 已验证，电芯宏平均，变差 |
 
 ### SOH 实验
 
@@ -33,6 +34,7 @@
 | `soh_xgb_rolling_pca50_avg10` | 50窗口、组合差分、降采样10、PCA50 | 0.012457 | 0.010179 | 1.09897% | 已验证，电芯宏平均 |
 | `soh_xgb_rolling_nopca_avg10` | 50窗口、组合差分、降采样10、不使用PCA | 0.011560 | 0.009395 | 1.01576% | 已验证，电芯宏平均 |
 | `soh_xgb_rolling_agg20` | 50窗口、组合差分、20区间均值+标准差、不使用PCA | 0.010796 | 0.008700 | 0.94038% | 已验证，电芯宏平均 |
+| `soh_xgb_rolling_agg20_vgradient` | 在统计聚合基础上加入电压方向 dQ/dV | 0.010573 | 0.008515 | 0.91959% | 已验证，电芯宏平均，小幅改善 |
 
 为公平对齐第98循环，滚动方案在第98循环的结果为：
 
@@ -282,3 +284,28 @@ batteryml run configs\baselines\sklearn\xgb\matr_1_rolling_soh_agg20.yaml --work
 - 四个 seed 的电芯宏平均结果完全一致：RMSE `0.0107956330`，MAE `0.0086998330`，MAPE `0.0094038236`；窗口级结果也完全一致：RMSE `0.0125133330`，MAE `0.0083863940`，MAPE `0.0090500414`。
 - 原因分析：训练入口会设置 Python、NumPy、PyTorch 随机种子，但当前 `XGBoostRULPredictor` 仅调用 `XGBRegressor` 默认参数；配置中没有 `random_state`、`subsample<1` 或 `colsample_bytree<1`，因此当前 XGBoost 训练基本是确定性的。
 - 结论：统计聚合方案在 seed 0–3 下结果稳定，但这不是对随机训练鲁棒性的充分验证，因为当前模型本身没有启用明显随机机制。若要测试真正的随机鲁棒性，需要显式加入 XGBoost 子采样和 `random_state`，并重新建立对照实验。
+
+### E-SOH-009：加入电压方向 dQ/dV 特征
+
+- 时间：2026-10-20。
+- 目的/假设：在滚动 SOH 统计聚合方案上增加 Qdlin 沿电压轴的相邻差分近似 (dQ/dV)，检验曲线局部斜率是否提供额外 SOH 信息。
+- 公共设置：MATR，41 个训练电芯/42 个测试电芯，50 循环窗口，组合差分，`aggregation_bins=20`，`seed=0`。
+- 配置：`configs/baselines/sklearn/xgb/matr_1_rolling_soh_agg20_vgradient.yaml`。
+- 命令：`batteryml run configs\\baselines\\sklearn\\xgb\\matr_1_rolling_soh_agg20_vgradient.yaml --workspace .\\workspace\\soh_xgb_rolling_agg20_vgradient --train --eval`。
+- 输出：`workspace/soh_xgb_rolling_agg20_vgradient/predictions_seed_0_20261020001301.pkl`。
+- 电芯宏平均结果：RMSE `0.01057294`，MAE `0.00851536`，MAPE `0.91959%`；窗口级结果：RMSE `0.01267185`，MAE `0.00842060`，MAPE `0.90871%`。
+- 对比：不加入 dQ/dV 的统计聚合方案为 RMSE `0.01079563`、MAE `0.00869983`、MAPE `0.94038%`。加入后 RMSE 下降约2.06%，MAE下降约2.12%，MAPE下降约2.21%，属于小幅改善。
+- 结论：在本次单 seed、固定20区间聚合设置下，dQ/dV 对 SOH 有小幅增益，但不能据此断言稳定提升；还需多 seed 和不同平滑/区间设置验证。
+
+### E-RUL-006：加入电压方向 dQ/dV 特征
+
+- 时间：2026-10-20。
+- 目的/假设：在已验证的滚动窗口+组合差分+统计聚合方案上，增加 Qdlin 沿电压轴的相邻差分近似 (dQ/dV)，检验曲线局部斜率是否能改善 RUL 预测。
+- 公共设置：MATR，41 个训练电芯/42 个测试电芯，50 循环窗口，组合差分，RUL≥300，`eol_soh=0.8`，`aggregation_bins=20`，`seed=0`。
+- 实现：新增 `include_voltage_gradient: True`；对参考差分和循环相邻差分分别计算电压网格上的 `numpy.gradient`，再进行20区间均值+标准差聚合。每循环特征约由80维增至160维。
+- 配置：`configs/baselines/sklearn/xgb/matr_1_rolling_w50_rul300_agg20_vgradient.yaml`。
+- 命令：`batteryml run configs\\baselines\\sklearn\\xgb\\matr_1_rolling_w50_rul300_agg20_vgradient.yaml --workspace .\\workspace\\rolling_w50_rul300_agg20_vgradient --train --eval`。
+- 输出：`workspace/rolling_w50_rul300_agg20_vgradient/predictions_seed_0_20261020001804.pkl`。
+- 电芯宏平均结果：RMSE `75.0781`，MAE `58.9972`，MAPE `11.34%`；窗口级结果：RMSE `151.6428`，MAE `95.9119`，MAPE `12.77%`。
+- 对比：不加入 dQ/dV 的统计聚合方案为 RMSE `69.5922`、MAE `55.5010`、MAPE `10.87%`。加入后电芯宏平均 RMSE 增加约7.88%，因此当前实验不支持 dQ/dV 对 RUL 有益的假设。
+- 限制：只验证了一个 seed；dQ/dV 对噪声敏感，当前实现未单独优化平滑窗口和聚合区间。

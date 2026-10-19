@@ -26,7 +26,8 @@ class VoltageCapacityMatrixFeatureExtractor(BaseFeatureExtractor):
                  use_precalculated_qdlin: bool = False,
                  smooth: bool = True,
                  cycle_average: int = None,
-                 aggregation_bins: int = None):
+                 aggregation_bins: int = None,
+                 include_voltage_gradient: bool = False):
         self.interp_dim = interp_dim
         self.min_cycle_index = min_cycle_index
         self.max_cycle_index = max_cycle_index
@@ -49,6 +50,7 @@ class VoltageCapacityMatrixFeatureExtractor(BaseFeatureExtractor):
         # See https://github.com/petermattia/revisit-severson-et-al/blob/main/revisit-severson-et-al.ipynb noqa
         self.cycle_average = cycle_average
         self.aggregation_bins = aggregation_bins
+        self.include_voltage_gradient = include_voltage_gradient
         if self.cycle_average is not None and self.aggregation_bins is not None:
             raise ValueError(
                 'cycle_average and aggregation_bins cannot be used together.')
@@ -64,6 +66,14 @@ class VoltageCapacityMatrixFeatureExtractor(BaseFeatureExtractor):
         means = np.asarray([chunk.mean() for chunk in chunks])
         stds = np.asarray([chunk.std() for chunk in chunks])
         return np.concatenate([means, stds])
+
+    def _voltage_gradient(self, vector, cell_data):
+        """Approximate dQ/dV on the reversed common voltage grid."""
+        voltage_grid = np.linspace(
+            cell_data.max_voltage_limit_in_V,
+            cell_data.min_voltage_limit_in_V,
+            len(vector))
+        return np.gradient(vector, voltage_grid)
         
     def process_cell(self, cell_data: BatteryData) -> torch.Tensor:
         feature, _ = self.process_cell_with_indices(cell_data)
@@ -120,6 +130,16 @@ class VoltageCapacityMatrixFeatureExtractor(BaseFeatureExtractor):
                 diff_qdlin = self._aggregate_vector(diff_qdlin)
 
                 feature_tensor = torch.from_numpy(diff_qdlin)
+                if self.include_voltage_gradient:
+                    voltage_gradient = self._voltage_gradient(
+                        qdlin - diff_base_qdlin, cell_data)
+                    if self.smooth:
+                        voltage_gradient = smooth(voltage_gradient)
+                    voltage_gradient = self._aggregate_vector(voltage_gradient)
+                    feature_tensor = torch.cat([
+                        feature_tensor,
+                        torch.from_numpy(voltage_gradient)
+                    ], dim=-1)
 
             else:
                 if self.diff_mode == "previous":
@@ -130,6 +150,10 @@ class VoltageCapacityMatrixFeatureExtractor(BaseFeatureExtractor):
 
                     # 当前循环 - 上一个循环
                     diff_previous_qdlin = qdlin - prev_qdlin
+                    voltage_gradient = None
+                    if self.include_voltage_gradient:
+                        voltage_gradient = self._voltage_gradient(
+                            diff_previous_qdlin, cell_data)
 
                     # 更新上一循环特征；必须在筛选 cycles_to_keep 之前更新
                     prev_qdlin = qdlin
@@ -141,6 +165,15 @@ class VoltageCapacityMatrixFeatureExtractor(BaseFeatureExtractor):
                         diff_previous_qdlin)
 
                     feature_tensor = torch.from_numpy(diff_previous_qdlin)
+                    if self.include_voltage_gradient:
+                        if self.smooth:
+                            voltage_gradient = smooth(voltage_gradient)
+                        voltage_gradient = self._aggregate_vector(
+                            voltage_gradient)
+                        feature_tensor = torch.cat([
+                            feature_tensor,
+                            torch.from_numpy(voltage_gradient)
+                        ], dim=-1)
                 else:
                     # 先计算当前循环相对参考循环的累计差分
                     diff_reference_qdlin = qdlin - diff_base_qdlin
@@ -151,8 +184,16 @@ class VoltageCapacityMatrixFeatureExtractor(BaseFeatureExtractor):
                         continue
 
                     # (x_n - x_ref) - (x_(n-1) - x_ref)
+                    previous_reference_diff = prev_reference_diff
                     diff_previous_qdlin = (
-                        diff_reference_qdlin - prev_reference_diff)
+                        diff_reference_qdlin - previous_reference_diff)
+                    reference_gradient = None
+                    previous_gradient = None
+                    if self.include_voltage_gradient:
+                        reference_gradient = self._voltage_gradient(
+                            diff_reference_qdlin, cell_data)
+                        previous_gradient = self._voltage_gradient(
+                            diff_previous_qdlin, cell_data)
 
                     # 更新上一循环累计差分；必须在筛选 cycles_to_keep 之前更新
                     prev_reference_diff = diff_reference_qdlin
@@ -170,6 +211,20 @@ class VoltageCapacityMatrixFeatureExtractor(BaseFeatureExtractor):
                         torch.from_numpy(diff_reference_qdlin),
                         torch.from_numpy(diff_previous_qdlin)
                     ], dim=-1)
+
+                    if self.include_voltage_gradient:
+                        if self.smooth:
+                            reference_gradient = smooth(reference_gradient)
+                            previous_gradient = smooth(previous_gradient)
+                        reference_gradient = self._aggregate_vector(
+                            reference_gradient)
+                        previous_gradient = self._aggregate_vector(
+                            previous_gradient)
+                        feature_tensor = torch.cat([
+                            feature_tensor,
+                            torch.from_numpy(reference_gradient),
+                            torch.from_numpy(previous_gradient)
+                        ], dim=-1)
 
             if self.cycles_to_keep is not None \
                     and cycle_index not in self.cycles_to_keep:

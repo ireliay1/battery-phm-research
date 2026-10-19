@@ -34,6 +34,15 @@
 - 完成统计聚合滚动 SOH 的 seed 0–3 验证；由于当前 XGBoost 配置为确定性训练，四组结果一致。
 - 将统计聚合特征迁移到 RUL 滚动预测，seed 0 下电芯宏平均 RMSE 为 69.592，优于 PCA50 方案。
 
+## 2026-10-20
+
+### 电压方向差分特征
+
+- 在 `VoltageCapacityMatrixFeatureExtractor` 中新增 `include_voltage_gradient` 配置，用统一电压网格上的 `numpy.gradient` 近似 Qdlin 的 (dQ/dV)。
+- dQ/dV 在参考差分和循环相邻差分两个通道上分别计算，并继续使用20区间均值+标准差聚合。
+- 完成滚动 SOH 对照：电芯宏平均 RMSE 从 0.010796 降至 0.010573。
+- 完成滚动 RUL 对照：电芯宏平均 RMSE 从 69.592 增至 75.078，当前不支持将 dQ/dV 直接加入 RUL 方案。
+
 ## 2026-10-17
 
 - 完成累计差分、相邻差分和组合特征实验。
