@@ -32,6 +32,9 @@
 | 实验/工作区 | 主要设置 | RMSE | MAE | MAPE | 状态 |
 |---|---|---:|---:|---:|---|
 | `soh_xgb_author_baseline` | 作者单循环设置，第98循环，XGBoost | 0.009663 | 0.007932 | 0.81195% | 已验证 |
+| `baseline_ridge_soh_matr1` | 第98循环单点、Ridge | 0.010810 | 0.008116 | 0.83085% | 已验证 |
+| `baseline_rf_soh_matr1` | 第98循环单点、随机森林 | 0.008819 | 0.007080 | 0.72496% | 已验证 |
+| `baseline_lstm_soh_matr1` | 第98循环单点、LSTM | 0.010846 | 0.008403 | 0.86057% | 已验证 |
 | `soh_xgb_rolling_pca50` | 50窗口、累计+相邻特征、PCA50、XGBoost | 0.012373 | 0.010066 | 1.08677% | 已验证，全窗口宏平均 |
 | `soh_xgb_ablation_previous` | 第98循环、相邻差分、XGBoost | 0.009987 | 0.007706 | 0.78956% | 已验证 |
 | `soh_xgb_ablation_both` | 第98循环、累计+相邻差分、XGBoost | 0.009345 | 0.007604 | 0.77871% | 已验证，当前最佳单点方案 |
@@ -178,6 +181,15 @@ RUL 的 `94.8531` 是电芯级宏平均，不能直接与作者单点基线的 `
 - 全窗口结果：电芯宏平均 RMSE 0.0123734，MAE 0.0100658，MAPE 1.08677%。
 - 第98循环对齐结果：RMSE 0.0103110，MAE 0.0076471，MAPE 0.78284%。
 - 对比：第98循环对齐后 RMSE 比基线差约6.70%，MAE/MAPE 好约3.34%。
+
+### E-SOH-001A：作者 Ridge/RF/LSTM SOH 基线补跑
+
+- 时间：2026-10-20。
+- 公共设置：MATR，41 个训练电芯/42 个测试电芯，参考循环8，第98循环单点 Qdlin，SOH 相对容量标签，`seed=0`。三组模型使用相同输入口径。
+- Ridge：配置 `configs/baselines/sklearn/ridge/matr_1_soh.yaml`，输出 `workspace/baseline_ridge_soh_matr1/predictions_seed_0_20261020011320.pkl`；RMSE `0.0108101`，MAE `0.0081159`，MAPE `0.83085%`。
+- 随机森林：配置 `configs/baselines/sklearn/rf/matr_1_soh.yaml`，输出 `workspace/baseline_rf_soh_matr1/predictions_seed_0_20261020011410.pkl`；RMSE `0.0088191`，MAE `0.0070795`，MAPE `0.72496%`。
+- LSTM：配置 `configs/baselines/nn_models/lstm/matr_1_soh.yaml`，输入高度为1，输出 `workspace/baseline_lstm_soh_matr1/predictions_seed_0_20261020011512.pkl`；RMSE `0.0108460`，MAE `0.0084034`，MAPE `0.86057%`。
+- 结论：在本次单循环、单 seed 对照中，随机森林优于作者 XGBoost 基线 RMSE `0.0096625`；Ridge 和 LSTM 略差。该结论尚未经过多 seed 验证。
 - 结论：当前不能声称整体提升；需要进一步定位离群电芯和做消融实验。
 
 ### E-SOH-003：固定循环 SOH 特征消融
