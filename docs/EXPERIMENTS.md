@@ -13,6 +13,9 @@
 | 实验/工作区 | 主要设置 | RMSE | MAE | MAPE | 状态 |
 |---|---|---:|---:|---:|---|
 | `test` / `xgb_matr1` | 作者 XGBoost，参考8、观测98 | 333.6646 | 155.5015 | 18.91% | 已验证 |
+| `baseline_ridge_matr1` | 作者 Ridge，第98循环单点 | 115.7892 | 80.4132 | 10.51% | 已验证 |
+| `baseline_rf_matr1` | 作者随机森林，第98循环单点 | 164.3123 | 105.7938 | 13.53% | 已验证 |
+| `baseline_lstm_matr1` | 作者 LSTM，整段100×1000输入 | 112.5278 | 84.5470 | 12.46% | 已验证，输入口径不同 |
 | `ref5_obs150` | 参考5、观测150 | 309.5811 | 147.9900 | 15.96% | 已验证 |
 | `ref5_obs150` | 参考5、观测50 | 282.5354 | 171.6803 | 22.39% | 已验证，指标不一致 |
 | `adjacent_obs98` | 单个相邻差分 | 382.8676 | 227.7189 | 27.62% | 已验证，变差 |
@@ -102,6 +105,15 @@ RUL 的 `94.8531` 是电芯级宏平均，不能直接与作者单点基线的 `
 - 输出：`workspace/test/predictions_seed_0_20261015225705.pkl`。
 - 结果：RMSE 333.6646，MAE 155.5015，MAPE 18.91%。
 - 结论：作者基线复现成功；不是原创算法结果。
+
+### E-RUL-003A：作者 Ridge/RF/LSTM 基线补跑
+
+- 时间：2026-10-20。
+- 数据划分：MATR，41 个训练电芯/42 个测试电芯，`seed=0`。
+- Ridge 配置：`configs/baselines/sklearn/ridge/matr_1.yaml`；第98循环单点；输出 `workspace/baseline_ridge_matr1/predictions_seed_0_20261020010325.pkl`；RMSE `115.7892`，MAE `80.4132`，MAPE `10.51%`。
+- 随机森林配置：`configs/baselines/sklearn/rf/matr_1.yaml`；第98循环单点；输出 `workspace/baseline_rf_matr1/predictions_seed_0_20261020010411.pkl`；RMSE `164.3123`，MAE `105.7938`，MAPE `13.53%`。
+- LSTM 配置：`configs/baselines/nn_models/lstm/matr_1.yaml`；1000 epoch，整段100×1000输入；输出 `workspace/baseline_lstm_matr1/predictions_seed_0_20261020010716.pkl`；RMSE `112.5278`，MAE `84.5470`，MAPE `12.46%`。
+- 结论：Ridge、RF 与 LSTM 均已成功运行。Ridge/LSTM 的 RMSE 低于作者 XGBoost 单点基线，但三者输入形式不同，不能据此作严格模型优劣结论；LSTM 配置还缺少 `feature_transformation` 字段，运行时有提示但未阻止训练。
 
 ### E-RUL-002：参考循环/观测循环敏感性
 
