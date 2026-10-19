@@ -243,7 +243,7 @@ def recursive_dump_string(data):
         return '_'.join([recursive_dump_string(x) for x in data])
     if isinstance(data, dict):
         return '_'.join([
-            recursive_dump_string(data[key])
+            f'{key}={recursive_dump_string(data[key])}'
             for key in sorted(data.keys())
         ])
     return str(data)

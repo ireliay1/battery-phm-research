@@ -27,7 +27,8 @@ class VoltageCapacityMatrixFeatureExtractor(BaseFeatureExtractor):
                  smooth: bool = True,
                  cycle_average: int = None,
                  aggregation_bins: int = None,
-                 include_voltage_gradient: bool = False):
+                 include_voltage_gradient: bool = False,
+                 include_temperature_resistance: bool = False):
         self.interp_dim = interp_dim
         self.min_cycle_index = min_cycle_index
         self.max_cycle_index = max_cycle_index
@@ -51,6 +52,7 @@ class VoltageCapacityMatrixFeatureExtractor(BaseFeatureExtractor):
         self.cycle_average = cycle_average
         self.aggregation_bins = aggregation_bins
         self.include_voltage_gradient = include_voltage_gradient
+        self.include_temperature_resistance = include_temperature_resistance
         if self.cycle_average is not None and self.aggregation_bins is not None:
             raise ValueError(
                 'cycle_average and aggregation_bins cannot be used together.')
@@ -74,6 +76,32 @@ class VoltageCapacityMatrixFeatureExtractor(BaseFeatureExtractor):
             cell_data.min_voltage_limit_in_V,
             len(vector))
         return np.gradient(vector, voltage_grid)
+
+    def _operating_features(self, cycle_data):
+        """Return interpretable temperature and resistance features."""
+        if cycle_data.temperature_in_C is None:
+            temperature = np.asarray([], dtype=float)
+        else:
+            temperature = np.asarray(cycle_data.temperature_in_C, dtype=float)
+            temperature = temperature[np.isfinite(temperature)]
+
+        if len(temperature) == 0:
+            temperature_features = np.full(5, np.nan)
+        else:
+            temperature_features = np.asarray([
+                np.mean(temperature),
+                np.max(temperature),
+                np.min(temperature),
+                np.max(temperature) - np.min(temperature),
+                np.std(temperature),
+            ])
+
+        resistance = cycle_data.internal_resistance_in_ohm
+        resistance = np.nan if resistance is None else float(resistance)
+        return np.concatenate([
+            temperature_features,
+            np.asarray([resistance])
+        ])
         
     def process_cell(self, cell_data: BatteryData) -> torch.Tensor:
         feature, _ = self.process_cell_with_indices(cell_data)
@@ -225,6 +253,13 @@ class VoltageCapacityMatrixFeatureExtractor(BaseFeatureExtractor):
                             torch.from_numpy(reference_gradient),
                             torch.from_numpy(previous_gradient)
                         ], dim=-1)
+
+            if self.include_temperature_resistance:
+                operating_features = torch.from_numpy(
+                    self._operating_features(cycle_data))
+                feature_tensor = torch.cat([
+                    feature_tensor, operating_features
+                ], dim=-1)
 
             if self.cycles_to_keep is not None \
                     and cycle_index not in self.cycles_to_keep:

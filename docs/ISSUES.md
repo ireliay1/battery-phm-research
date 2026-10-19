@@ -50,11 +50,9 @@
 - 当前主要使用 seed 0，不能据此判断稳定性。
 - 下一步：至少运行 3～10 个 seed，报告均值和标准差。
 
-### I009：没有可用 Git 历史
+### I009：没有可用 Git 历史（已解决）
 
-- 当前目录不是 Git 仓库，`git status/log` 无法使用。
-- 影响：无法用 commit 精确追溯代码版本。
-- 下一步：确认不会覆盖用户文件后初始化仓库或建立外部版本备份。
+- 已初始化 Git 仓库并同步到 GitHub；当前实验可用 commit、配置和 workspace 路径追溯。
 
 ### I010：实验结果文件未统一保存逐样本循环索引
 
@@ -66,3 +64,10 @@
 
 - `requirements.txt` 记录依赖名称和部分范围，但未记录完整 pip 环境版本。
 - 下一步：保存 `pip freeze`、Python 版本、CPU/CUDA 信息和 CLI 路径。
+
+### I012：数据缓存键未包含字典参数名（已修复）
+
+- 表现：`include_voltage_gradient: True` 与 `include_temperature_resistance: True` 生成了相同缓存键，导致一次温度/内阻实验错误复用了 dQ/dV 特征缓存。
+- 原因：`recursive_dump_string` 只拼接字典值，没有拼接参数名；两个布尔配置都为 `True` 时发生碰撞。
+- 解决：缓存签名改为同时包含 `key=value`；重新运行温度/内阻实验并使用新的缓存键和工作区 `*_v2`。
+- 影响：首次工作区 `soh_xgb_rolling_agg20_temp_ir` 的结果不作为有效实验记录；有效结果见 E-SOH-010/E-RUL-007。
