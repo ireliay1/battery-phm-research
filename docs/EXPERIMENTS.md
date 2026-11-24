@@ -357,3 +357,63 @@ batteryml run configs\baselines\sklearn\xgb\matr_1_rolling_soh_agg20.yaml --work
 - 结果：电芯宏平均 RMSE `97.8706`，MAE `78.1039`，MAPE `13.83%`；窗口级 RMSE `248.1784`，MAE `149.2950`，MAPE `17.62%`。
 - 对比：原统计聚合方案为 RMSE `69.5922`、MAE `55.5010`、MAPE `10.87%`，新增特征后电芯宏平均 RMSE 增加约40.63%，RUL 明显变差。
 - 结论：当前温度/内阻单循环统计量没有改善 SOH 或 RUL；不能据此否定机理特征，后续应优先测试内阻增长量、温度应力累积等退化相关特征，而不是继续无差别追加原始统计量。
+
+### E-ANOM-001：Isolation Forest + MAD 阈值初步验证
+
+- 时间：2026-10-21。
+- 目的：验证基于正常样本异常分数和 MAD 的自动阈值方法能否用于当前 MATR 数据。
+- 实现：新增 `scripts/anomaly_iforest_mad.py`。特征使用 Qdlin 固定参考差分与相邻差分，20区间均值+标准差；训练数据为训练电芯第8–98循环，验证数据为第99–198循环（暂假设正常）。Isolation Forest 使用200棵树；异常分数统一为 `-decision_function`，以保证分数越高越异常。
+- 阈值：
+
+```text
+tau = median(score_val) + k * 1.4826 * MAD(score_val)
+```
+
+- 命令：
+
+```bat
+python scripts\anomaly_iforest_mad.py --k 3.5 --output workspace\anomaly_iforest_mad_k35
+```
+
+- 输出：`workspace/anomaly_iforest_mad_k35/results.json`。
+- 初步结果：验证集分数中位数 `-0.144534`，MAD `0.082859`，稳健标准差 `0.122847`，阈值 `0.285430`；真实测试集共 `30491` 个样本，超过阈值 `0` 个，报警率 `0%`。这里的测试集没有故障标签，报警率不能解释为真实误报率。
+- 合成异常 sanity check：第一轮在10%的测试特征中随机单独一个维度增加5个标准差，Precision、Recall、F1 均为 `0`；说明 `k=3.5` 过于保守，且单维度注入未形成容易被孤立的异常模式。
+- 补充 `k=2.0`：阈值 `0.101160`，真实测试集报警 `92/30491`，报警率 `0.3017%`；在10%的测试样本中随机10个维度增加5个标准差时，合成异常 Precision `0.1183`、Recall `0.0036`、F1 `0.0070`。即使降低阈值，当前合成异常检出率仍很低，说明还不能据此认为特征和异常注入方式合理。
+- 限制：MATR 没有循环级故障标签；验证集“正常”是假设，且电池自然退化可能被孤立森林视为分布变化。合成异常 F1 仅用于检查流程，不代表真实故障检测性能。
+- 后续：比较 `k=2.0/2.5/3.0/3.5`，增加连续超阈值报警规则，并构造更符合电池故障机理的容量突变、电压曲线局部突变和内阻增长异常。
+
+### E-ANOM-002：Tsinghua EV 品牌1车辆级 Isolation Forest 基线
+
+- 时间：2026-10-21。
+- 目的：使用带真实车辆级异常标签的 Tsinghua EV 数据，验证 Isolation Forest + MAD 阈值是否能识别真实异常车辆。
+- 数据：`data/raw/TsinghuaEV/23659323.zip` 解压出的 `extracted/battery_brand1.tar.gz`；训练充电片段 `416639` 个，测试充电片段 `60100` 个；训练集正常车辆 `151` 辆，测试车辆 `32` 辆，其中异常车辆 `15` 辆。
+- 特征：每个充电片段为 `128×8` 时间序列；排除 timestamp，对7个物理通道提取均值、标准差、最小值、最大值、首值、末值、首末差和线性斜率，共 `56` 维。
+- 训练策略：只用训练集正常车辆的片段拟合标准化器和 Isolation Forest；按车辆聚合片段异常分数，取每辆车分数最高10%的片段均值作为车辆分数；使用训练正常车辆的车辆分数通过 MAD 确定阈值。
+- 脚本：`scripts/tsinghua_ev_iforest.py`。
+- 命令：
+
+```bat
+python scripts\tsinghua_ev_iforest.py --archive data\raw\TsinghuaEV\extracted\battery_brand1.tar.gz --brand 1 --output workspace\tsinghua_ev_iforest_brand1_k30 --k 3.0
+```
+
+- 输出：`workspace/tsinghua_ev_iforest_brand1_k30/results.json`。
+- 结果：车辆阈值 `0.267296`，测试车辆预测异常数 `0/32`；Precision `0`，Recall `0`，F1 `0`，AUROC `0.5412`。
+- 结论：当前简单统计特征的异常分数排序接近随机，MAD 的 `k=3.0` 阈值还过于保守；不能认为该基线有效，也不能据此否定 Tsinghua EV 数据或 Isolation Forest。
+- 重要限制：本轮使用同一批正常训练车辆拟合模型并校准阈值，阈值校准尚未拆出独立正常验证车辆；后续需修正为“正常车辆 fit/calibration”分离，并比较更低的 `k`、分位数阈值及更具物理意义的动态特征。
+
+### E-ANOM-003：Tsinghua EV 品牌1分位数阈值
+
+- 时间：2026-10-21。
+- 目的：替换 MAD 阈值，并使用独立正常车辆校准分数的高分位数确定报警阈值。
+- 划分：正常训练车辆中120辆用于拟合标准化器和 Isolation Forest，31辆用于阈值校准；测试集32辆，其中异常15辆。所有同车片段保持在同一划分中。
+- 方法：车辆分数仍为每辆车最高10%充电片段异常分数的均值；阈值为正常校准车辆分数的99%分位数。
+- 命令：
+
+```bat
+python scripts\tsinghua_ev_iforest.py --archive data\raw\TsinghuaEV\extracted\battery_brand1.tar.gz --brand 1 --output workspace\tsinghua_ev_iforest_brand1_q99 --quantile 0.99
+```
+
+- 输出：`workspace/tsinghua_ev_iforest_brand1_q99/results.json`。
+- 结果：车辆阈值 `0.134847`，预测异常车辆 `1/32`；Precision `1.0000`，Recall `0.0667`，F1 `0.1250`，AUROC `0.5412`。
+- 结论：分位数阈值比 MAD 阈值更容易触发报警，误报较少，但漏报严重；AUROC 与上一版本完全相同，说明主要瓶颈是特征和异常分数排序，而不是阈值形式。
+- 后续：优先改进动态/机理特征，再比较多个分位数；不能只靠降低分位数来换取 Recall。
